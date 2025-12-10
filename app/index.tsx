@@ -1,150 +1,173 @@
-import { Ionicons } from '@expo/vector-icons'; // Icons kosam import
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import "./globals.css";
- 
+
+const { height, width } = Dimensions.get('window');
+
 export default function Login() {
   const router = useRouter();
- 
+
   // State Variables
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false); // Eye toggle kosam
-  const [error, setError] = useState(''); // Error message kosam
- 
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+
   const handleLogin = () => {
-    setError(''); // Reset error before checking
- 
-    // Basic Validation
+    setError('');
     if (!email || !password) {
       setError('Please enter both Email and Password.');
       return;
     }
- 
-    // MOCK LOGIN LOGIC (Backend API integration ikkada cheyali)
-    // Testing kosam: Email "admin" & Password "1234" aithene login avuthundi.
+    // MOCK LOGIN
     if (email === 'admin@poultry.com' && password === '123456') {
-      console.log("Login Success");
       router.replace('/(admin)/Dashboard');
     } else {
-      // Wrong credentials enter chesthe warning
-      setError('Invalid Email or Password. Please try again.');
+      setError('Invalid Email or Password.');
     }
   };
- 
-  const handleVendorRegister = () => {
-    // Vendor registration page ki redirect cheyali
-    // router.push('/register');
-    alert("Redirecting to Vendor Registration Page...");
-  };
- 
+
   return (
-    <View className="flex-1 bg-gray-50">
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
-        className="w-full"
-        keyboardShouldPersistTaps="handled"
+    // MAIN CONTAINER
+    <View className="flex-1 bg-gray-900">
+      
+      {/* 1. BACKGROUND IMAGE LAYER */}
+      <Image
+        source={require('../assets/images/background.jpg')}
+        className="absolute inset-0 w-full h-full z-0"
+        resizeMode="cover"
+        style={{ width: '100%', height: '100%' }}
+      />
+
+      {/* 2. DARK OVERLAY LAYER (Slightly darker for better contrast with glass card) */}
+      <View className="absolute inset-0 bg-black/50 z-0" />
+
+      {/* 3. CONTENT LAYER */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1 z-10"
       >
-        {/* Responsive Container: Mobile: Full Width, Web: 450px Fixed */}
-        <View className="w-full md:w-[450px] p-5">
-         
-          {/* 1. Header Logo */}
-          <View className="items-center mb-6">
-            <View className="h-20 w-20 bg-orange-100 rounded-full items-center justify-center mb-3 border-4 border-white shadow-sm">
-              <Text className="text-3xl">🐔</Text>
-            </View>
-            <Text className="text-3xl font-bold text-slate-800">Poultry Farm</Text>
-            <Text className="text-slate-500 text-sm mt-1">Welcome back!</Text>
-          </View>
- 
-          {/* 2. Login Card */}
-          <View className="bg-white p-6 md:p-8 rounded-3xl shadow-sm md:shadow-2xl border border-gray-100 space-y-5">
-           
-            {/* Error Message Display Area */}
-            {error ? (
-              <View className="bg-red-50 p-3 rounded-lg border border-red-200 flex-row items-center">
-                <Ionicons name="alert-circle" size={20} color="#ef4444" />
-                <Text className="text-red-500 text-sm font-medium ml-2 flex-1">{error}</Text>
+        <ScrollView
+          contentContainerStyle={{ 
+            flexGrow: 1, 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            paddingBottom: 20 // Little padding at bottom
+          }}
+          className="w-full"
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Responsive Card Container */}
+          <View className="w-full md:w-[420px] p-6 items-center">
+            
+            {/* LOGO & HEADING */}
+            <View className="items-center mb-6">
+              <View className="h-20 w-20 bg-white/10 rounded-full items-center justify-center mb-3 border border-white/20 backdrop-blur-md">
+                <Text className="text-4xl">🐔</Text> 
               </View>
-            ) : null}
- 
-            {/* Email Field */}
-            <View>
-              <Text className="text-slate-700 font-semibold mb-2 ml-1 text-sm">Email / User ID</Text>
-              <TextInput
-                className={`w-full bg-slate-50 rounded-xl px-4 py-3.5 text-slate-700 border focus:border-orange-500 outline-none ${error ? 'border-red-300' : 'border-slate-200'}`}
-                placeholder="admin@poultry.com"
-                placeholderTextColor="#94a3b8"
-                value={email}
-                onChangeText={(text) => { setEmail(text); setError(''); }} // Type chesthunnappudu error povali
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <Text className="text-3xl font-bold text-white shadow-md text-center">Poultry Farm</Text>
+              <Text className="text-gray-300 text-base font-medium text-center">Manager Portal</Text>
             </View>
- 
-            {/* Password Field with Eye Icon */}
-            <View>
-              <Text className="text-slate-700 font-semibold mb-2 ml-1 text-sm">Password</Text>
-              <View className="relative justify-center">
+
+            {/* LOGIN FORM CARD (Glassmorphism Effect - TRANSPARENT) */}
+            <View 
+              className="w-full p-6 rounded-3xl border border-white/20 shadow-2xl space-y-4"
+              style={{
+                backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.1)' : '#00000055', // Glass effect
+                backdropFilter: Platform.OS === 'web' ? 'blur(15px)' : undefined, // Strong Blur
+              }}
+            >
+              
+              {/* Error Box */}
+              {error ? (
+                <View className="bg-red-500/20 p-3 rounded-xl border border-red-500/50 flex-row items-center mb-2">
+                  <Ionicons name="alert-circle" size={20} color="#fca5a5" />
+                  <Text className="text-red-100 text-sm font-bold ml-2 flex-1">{error}</Text>
+                </View>
+              ) : null}
+
+              {/* Email Input */}
+              <View>
+                {/* Changed label color to white/gray-200 for readability on glass */}
+                <Text className="text-gray-200 font-semibold mb-2 ml-1 text-sm">Email ID</Text>
                 <TextInput
-                  className={`w-full bg-slate-50 rounded-xl px-4 py-3.5 text-slate-700 border focus:border-orange-500 outline-none pr-12 ${error ? 'border-red-300' : 'border-slate-200'}`}
-                  placeholder="••••••••"
-                  placeholderTextColor="#94a3b8"
-                  value={password}
-                  onChangeText={(text) => { setPassword(text); setError(''); }}
-                  secureTextEntry={!showPassword} // Toggle logic
+                  className="w-full bg-white/90 rounded-xl px-4 py-3.5 text-gray-900 border border-white/20 focus:border-orange-500 font-medium"
+                  placeholder="admin@poultry.com"
+                  placeholderTextColor="#6b7280"
+                  value={email}
+                  onChangeText={(t) => { setEmail(t); setError(''); }}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
                 />
-               
-                {/* Eye Icon Button */}
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 p-1"
-                >
-                  <Ionicons
-                    name={showPassword ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color="#64748b"
+              </View>
+
+              {/* Password Input */}
+              <View>
+                <Text className="text-gray-200 font-semibold mb-2 ml-1 text-sm">Password</Text>
+                <View className="relative justify-center">
+                  <TextInput
+                    className="w-full bg-white/90 rounded-xl px-4 py-3.5 text-gray-900 border border-white/20 focus:border-orange-500 font-medium pr-12"
+                    placeholder="••••••••"
+                    placeholderTextColor="#6b7280"
+                    value={password}
+                    onChangeText={(t) => { setPassword(t); setError(''); }}
+                    secureTextEntry={!showPassword}
                   />
+                  <TouchableOpacity 
+                    onPress={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 p-2"
+                  >
+                    <Ionicons name={showPassword ? "eye-off" : "eye"} size={22} color="#4b5563" />
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity className="items-end mt-2">
+                  <Text className="text-orange-300 font-medium text-xs">
+                    Forgot Password?
+                  </Text>
                 </TouchableOpacity>
               </View>
- 
-              <TouchableOpacity className="items-end mt-2">
-                <Text className="text-orange-500 text-xs font-bold hover:text-orange-600">Forgot Password?</Text>
+
+              {/* Submit Button */}
+              <TouchableOpacity 
+                onPress={handleLogin}
+                className="bg-orange-600 rounded-xl py-3.5 shadow-lg active:bg-orange-700 mt-2 border border-orange-500"
+              >
+                <Text className="text-white text-center font-bold text-lg tracking-wide">LOGIN</Text>
               </TouchableOpacity>
+
+              {/* Vendor Link INSIDE the card (Better layout) */}
+              <View className="flex-row justify-center items-center mt-4 pt-4 border-t border-white/10">
+                 <Text className="text-gray-300 text-sm mr-2">New Vendor?</Text>
+                 <TouchableOpacity onPress={() => alert("Vendor Registration")}>
+                    <Text className="text-white font-bold text-sm underline decoration-orange-500">Create Account</Text>
+                 </TouchableOpacity>
+              </View>
+
             </View>
- 
-            {/* Login Button */}
-            <TouchableOpacity
-              onPress={handleLogin}
-              className="bg-orange-500 rounded-xl py-4 shadow-lg active:bg-orange-600 hover:bg-orange-600 transition-all mt-2"
-            >
-              <Text className="text-white text-center font-bold text-lg tracking-wide">LOGIN</Text>
-            </TouchableOpacity>
- 
+
           </View>
- 
-          {/* 3. Vendor Registration Link */}
-          <View className="mt-8 items-center space-y-2">
-            <Text className="text-slate-400 text-sm">Are you a new Vendor?</Text>
-            <TouchableOpacity
-              onPress={handleVendorRegister}
-              className="py-2 px-4 rounded-full bg-orange-50 border border-orange-100 active:bg-orange-100"
-            >
-              <Text className="text-orange-600 font-bold text-sm">Create Vendor Account</Text>
-            </TouchableOpacity>
-          </View>
- 
-        </View>
-      </ScrollView>
- 
-      {/* Web Footer */}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Web Footer Copyright */}
       {Platform.OS === 'web' && (
-         <View className="absolute bottom-4 w-full items-center pointer-events-none">
-            <Text className="text-gray-300 text-xs">© 2025 Poultry Farm Manager</Text>
-         </View>
+        <View className="absolute bottom-2 w-full items-center z-20 pointer-events-none">
+           <Text className="text-white/30 text-[10px]">© 2025 Poultry Farm Manager</Text>
+        </View>
       )}
- 
+
     </View>
   );
 }
