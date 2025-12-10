@@ -9,15 +9,6 @@ export interface PushNotificationState {
 }
 
 export const usePushNotification = (): PushNotificationState => {
-  // Notification handler
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: false,
-      shouldShowAlert: true,   
-      shouldSetBadge: false,
-    }),
-  });
-
   const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
   const [notification, setNotification] = useState<
     Notifications.Notification | undefined
@@ -26,47 +17,61 @@ export const usePushNotification = (): PushNotificationState => {
   const notificationListener = useRef<Notifications.Subscription>();
   const responseListener = useRef<Notifications.Subscription>();
 
-  // Register device for notifications
-  async function registerForPushNotificationsAsync() {
-    let token: string | undefined;
-
-    if (Device.isDevice) {
-      // Permissions
-      const { status: existingStatus } =
-        await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== "granted") {
-        alert("Failed to get push token!");
-        return;
-      }
-
-      // Get Expo push token
-      token = (await Notifications.getExpoPushTokenAsync()).data;
-
-      // Android channel
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("default", {
-          name: "default",
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#FF231F7C",
-        });
-      }
-
-      return token;
-    } else {
-      console.log("Please use a physical device!");
-    }
+  // ⭐ Android-only: run handler only on Android
+  if (Platform.OS === "android") {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldShowAlert: true,
+        shouldSetBadge: false,
+      }),
+    });
   }
 
-  // Listeners
+  async function registerForPushNotificationsAsync() {
+    // ❌ If NOT Android → skip
+    if (Platform.OS !== "android") {
+      console.log("Push notifications only enabled for Android.");
+      return;
+    }
+
+    if (!Device.isDevice) {
+      console.log("Please use a real device.");
+      return;
+    }
+
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== "granted") {
+      alert("Failed to get push token!");
+      return;
+    }
+
+    // ⭐ Android Expo Push Token
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+
+    // Android notification channel
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "default",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF231F7C",
+    });
+
+    return token;
+  }
+
   useEffect(() => {
+    // ❌ Skip web/iOS completely
+    if (Platform.OS !== "android") return;
+
     registerForPushNotificationsAsync().then((token) => {
       if (token) setExpoPushToken(token);
     });
@@ -86,7 +91,6 @@ export const usePushNotification = (): PushNotificationState => {
         Notifications.removeNotificationSubscription(
           notificationListener.current
         );
-
       if (responseListener.current)
         Notifications.removeNotificationSubscription(
           responseListener.current
