@@ -8,6 +8,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{headerShown:false}} />
         <Stack.Screen name="(admin)" options={{headerShown:false}} />
+        <Stack.Screen name="(vendor)" options={{headerShown:false}} />
       </Stack>
    </Context>
        

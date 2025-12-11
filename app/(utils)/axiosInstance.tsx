@@ -1,12 +1,43 @@
-import React from 'react'
-import { Text, View } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios, {
+  AxiosError,
+  AxiosInstance,
+  InternalAxiosRequestConfig,
+} from 'axios';
+ 
 
-const axiosInstance = () => {
-  return (
-    <View>
-      <Text>axiosInstance</Text>
-    </View>
-  )
-}
 
-export default axiosInstance
+const getToken = async (): Promise<string | null> => {
+  try {
+    return await AsyncStorage.getItem("userToken");
+  } catch (error) {
+    console.error("Error getting token:", error);
+    return null;
+  }
+};
+
+const createAxiosInstance = (baseURL: string): AxiosInstance => {
+  const instance: AxiosInstance = axios.create({
+    baseURL: baseURL,
+    timeout: 10000,  
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  instance.interceptors.request.use(
+    async (config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> => {
+      const token: string | null = await getToken();
+      
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error: AxiosError): Promise<AxiosError> => Promise.reject(error)
+  );
+
+  return instance;
+};
+
+export const rootApi: AxiosInstance = createAxiosInstance("http://192.168.0.110:8080");

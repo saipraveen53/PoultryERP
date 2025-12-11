@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { jwtDecode } from "jwt-decode";
 import React, { useState } from 'react';
 import {
   Dimensions,
@@ -12,7 +13,17 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+// import { rootApi } from './(utils)/axiosInstance';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import "./globals.css";
+
+// --------------------------------------------------------
+// ASSUMPTION: Placeholder for your API client (e.g., Axios instance)
+// You must replace this with your actual API configuration.
+// --------------------------------------------------------
+
+// --------------------------------------------------------
 
 const { height, width } = Dimensions.get('window');
 
@@ -20,22 +31,62 @@ export default function Login() {
   const router = useRouter();
 
   // State Variables
-  const [email, setEmail] = useState('');
+  // Renamed 'email' to 'username' to match your DTO
+  const [username, setUsername] = useState(''); 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false); // New state for loading
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError('');
-    if (!email || !password) {
-      setError('Please enter both Email and Password.');
+    if (!username || !password) {
+      setError('Please enter both Username/Email and Password.');
       return;
     }
-    // MOCK LOGIN
-    if (email === 'admin@poultry.com' && password === '123456') {
-      router.replace('/(admin)/Dashboard');
-    } else {
-      setError('Invalid Email or Password.');
+
+    setIsLoading(true); // Start loading
+
+    try {
+      // 1. DTO structure: { username: ..., password: ... }
+      const loginPayload = {
+        username: username,
+        password: password,
+      };
+
+      // 2. API Call: rootApi.post(api/auth/login)
+      const response = await axios.post('http://192.168.0.110:8080/api/auth/login', loginPayload);
+      
+
+      // --- Success Logic ---
+      // NOTE: Adjust the routing based on your app structure and 
+      // where the user should go after a successful login.
+      console.log('Login Successful:', response);
+      console.log("Token",response.data.token)
+      await AsyncStorage.setItem("userToken",response.data.token);
+      const decoded = jwtDecode(response.data.token);
+      console.log("Token Claims :",decoded);
+      console.log("Logged In Role :",decoded.roles[0]);
+       if(decoded.roles[0]=="VENDOR"){
+        router.replace('/(vendor)/Orders');
+       }else{
+        router.replace('/(admin)/Dashboard');
+       };
+
+
+      
+      // Navigate to the dashboard (Assuming admin dashboard as per original code)
+     
+
+    } catch (err) {
+      // --- Error Logic ---
+      console.error('Login Failed:', err.message);
+      // Display the specific error message from the API or the default one
+      setError(err.message || 'An unexpected error occurred during login.');
+      // Optional: Show a more prominent alert for critical errors
+      // Alert.alert("Login Error", err.message || "Could not connect to the server.");
+    } finally {
+      setIsLoading(false); // Stop loading regardless of success/failure
     }
   };
 
@@ -98,16 +149,15 @@ export default function Login() {
                 </View>
               ) : null}
 
-              {/* Email Input */}
+              {/* Username Input (renamed from Email) */}
               <View>
-                {/* Changed label color to white/gray-200 for readability on glass */}
-                <Text className="text-gray-200 font-semibold mb-2 ml-1 text-sm">Email ID</Text>
+                <Text className="text-gray-200 font-semibold mb-2 ml-1 text-sm">Username / Email ID</Text>
                 <TextInput
                   className="w-full bg-white/90 rounded-xl px-4 py-3.5 text-gray-900 border border-white/20 focus:border-orange-500 font-medium"
-                  placeholder="admin@poultry.com"
+                  placeholder="e.g., admin@poultry.com"
                   placeholderTextColor="#6b7280"
-                  value={email}
-                  onChangeText={(t) => { setEmail(t); setError(''); }}
+                  value={username} // Use username state
+                  onChangeText={(t) => { setUsername(t); setError(''); }} // Update username state
                   autoCapitalize="none"
                   keyboardType="email-address"
                 />
@@ -142,9 +192,14 @@ export default function Login() {
               {/* Submit Button */}
               <TouchableOpacity 
                 onPress={handleLogin}
-                className="bg-orange-600 rounded-xl py-3.5 shadow-lg active:bg-orange-700 mt-2 border border-orange-500"
+                // Disable button and change color when loading
+                disabled={isLoading}
+                className={`rounded-xl py-3.5 shadow-lg mt-2 border border-orange-500 ${isLoading ? 'bg-orange-800' : 'bg-orange-600 active:bg-orange-700'}`}
               >
-                <Text className="text-white text-center font-bold text-lg tracking-wide">LOGIN</Text>
+                <Text className="text-white text-center font-bold text-lg tracking-wide">
+                  {/* Show a spinner or 'LOGGING IN...' when loading */}
+                  {isLoading ? 'LOGGING IN...' : 'LOGIN'}
+                </Text>
               </TouchableOpacity>
 
               {/* Vendor Link INSIDE the card (Better layout) */}
