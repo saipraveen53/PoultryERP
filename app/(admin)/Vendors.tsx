@@ -189,9 +189,9 @@ const Vendors = () => {
   const totalAmount = (parseFloat(finalWeight || '0') * parseFloat(pricePerKg || '0')).toFixed(0);
 
   // --- API URLS ---
-  const GET_ORDERS_URL = 'http://192.168.0.110:8081/api/orders/admin/allOrders';
-  const PLACE_ORDER_URL = 'http://192.168.0.110:8081/api/orders/vendor/place-order';
-  const GET_STOCK_URL = 'http://192.168.0.110:8081/api/hens/getStock'; 
+  const GET_ORDERS_URL = 'http://192.168.0.110:8081/api/farm/orders/admin/allOrders';
+  const PLACE_ORDER_URL = 'http://192.168.0.110:8081/api/farm/orders/vendor/place-order';
+  const GET_STOCK_URL = 'http://192.168.0.110:8081/api/farm/hens/getStock'; 
 
   // --- FETCH DATA ---
   const fetchData = async () => {
@@ -342,7 +342,7 @@ const Vendors = () => {
 
     setLoading(true);
     try {
-      const ADD_DELIVERY_URL = `http://192.168.0.110:8081/api/orders/admin/add-delivery/${selectedOrder.id}`;
+      const ADD_DELIVERY_URL = `http://192.168.0.110:8081/api/farm/orders/admin/add-delivery/${selectedOrder.id}`;
       
       const payload = {
         vehicleNumber: vehicleNo,
