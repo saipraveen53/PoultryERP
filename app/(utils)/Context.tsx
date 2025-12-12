@@ -3,10 +3,10 @@ import React, { createContext, useState } from "react";
 export const PoultryContext = createContext({});
 
 const Context = ({ children }) => {
-  const [dataa, setData] = useState("Hello Context");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   return (
-    <PoultryContext.Provider value={{ dataa, setData }}>
+    <PoultryContext.Provider value={{isAuthenticated, setIsAuthenticated }}>
       {children}
     </PoultryContext.Provider>
   );

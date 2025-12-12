@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { jwtDecode } from "jwt-decode";
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { PoultryContext } from './(utils)/Context';
 // import { rootApi } from './(utils)/axiosInstance';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -29,6 +30,7 @@ const { height, width } = Dimensions.get('window');
 
 export default function Login() {
   const router = useRouter();
+  const {isAuthenticated, setIsAuthenticated} = useContext(PoultryContext);
 
   // State Variables
   // Renamed 'email' to 'username' to match your DTO
@@ -58,10 +60,10 @@ export default function Login() {
       const response = await axios.post('http://192.168.0.110:8080/api/auth/login', loginPayload);
       
 
-      // --- Success Logic ---
-      // NOTE: Adjust the routing based on your app structure and 
-      // where the user should go after a successful login.
-      console.log('Login Successful:', response);
+     if(response.status==200){
+
+          setIsAuthenticated(true)
+          console.log('Login Successful:', response);
       console.log("Token",response.data.token)
       await AsyncStorage.setItem("userToken",response.data.token);
       const decoded = jwtDecode(response.data.token);
@@ -72,6 +74,9 @@ export default function Login() {
        }else{
         router.replace('/(admin)/Dashboard');
        };
+
+     }
+      
 
 
       
