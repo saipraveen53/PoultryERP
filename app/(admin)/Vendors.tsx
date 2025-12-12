@@ -7,7 +7,9 @@ import {
   Alert,
   FlatList,
   Modal,
+  RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -26,7 +28,7 @@ interface Order {
   breed: string;
   type: 'Weight' | 'Quantity';
   value: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DELIVERED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISPATCHED' | 'DELIVERED';
   date: string;
   batchCode: string;
   fulfillment?: {
@@ -40,7 +42,7 @@ interface Order {
   };
 }
 
-// --- BATCH INTERFACE (From getStock) ---
+// --- BATCH INTERFACE ---
 interface Batch {
   id: number;
   batchCode: string;
@@ -49,10 +51,107 @@ interface Batch {
   weight: number;
 }
 
+// --- 1. SEPARATE COMPONENT FOR LIST ITEM (PREVENTS CRASH) ---
+const OrderCard = React.memo(({ item, onReject, onAssign }: { item: Order, onReject: (id: string) => void, onAssign: (order: Order) => void }) => {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={styles.vendorName}>{item.vendorName}</Text>
+          <Text style={styles.shopName}>{item.shopName}</Text>
+          <Text style={styles.address}>📍 {item.address}</Text>
+          <Text style={styles.phone}>📞 {item.phone}</Text>
+        </View>
+        <View style={[
+            styles.statusBadge, 
+            item.status === 'PENDING' ? styles.statusPending : 
+            item.status === 'DELIVERED' ? styles.statusDelivered : styles.statusRejected
+        ]}>
+          <Text style={[
+             styles.statusText,
+             item.status === 'PENDING' ? styles.textPending : 
+             item.status === 'DELIVERED' ? styles.textDelivered : styles.textRejected
+          ]}>
+            {item.status}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.detailsRow}>
+        <View>
+            <Text style={styles.label}>Breed / Batch</Text>
+            <Text style={styles.value}>{item.breed}</Text>
+            <Text style={styles.subValue}>{item.batchCode}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.label}>Requested ({item.type})</Text>
+            <Text style={styles.largeValue}>
+                {item.value} <Text style={styles.unit}>{item.type === 'Weight' ? 'kg' : 'Birds'}</Text>
+            </Text>
+        </View>
+      </View>
+
+      {/* --- UPDATED DISPATCH REPORT SECTION --- */}
+      {item.status !== 'PENDING' && item.fulfillment?.vehicleNo && (
+        <View style={styles.dispatchBox}>
+            <Text style={styles.dispatchTitle}>🚚 DISPATCH REPORT</Text>
+            
+            <View style={styles.dispatchRow}>
+                <Text style={styles.dispatchLabel}>Vehicle:</Text>
+                <Text style={styles.dispatchValue}>{item.fulfillment.vehicleNo}</Text>
+            </View>
+            <View style={styles.dispatchRow}>
+                <Text style={styles.dispatchLabel}>Driver:</Text>
+                <Text style={styles.dispatchValue}>{item.fulfillment.driverName} ({item.fulfillment.driverPhone})</Text>
+            </View>
+
+            {/* Price Info Added Here */}
+            <View style={styles.dispatchDivider} />
+            
+            <View style={styles.dispatchRow}>
+                <Text style={styles.dispatchLabel}>Final Weight:</Text>
+                <Text style={styles.dispatchValue}>{item.fulfillment.finalWeight || '-'} kg</Text>
+            </View>
+            <View style={styles.dispatchRow}>
+                <Text style={styles.dispatchLabel}>Price/Kg:</Text>
+                <Text style={styles.dispatchValue}>₹{item.fulfillment.pricePerKg || '0'}</Text>
+            </View>
+            
+            <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total Bill Amount:</Text>
+                <Text style={styles.totalValue}>₹{item.fulfillment.totalAmount || '0'}</Text>
+            </View>
+        </View>
+      )}
+
+      {item.status === 'PENDING' && (
+        <View style={styles.actionRow}>
+            <TouchableOpacity 
+                onPress={() => onReject(item.id)}
+                style={[styles.actionBtn, styles.rejectBtn]}
+            >
+                <Text style={styles.rejectBtnText}>REJECT</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+                onPress={() => onAssign(item)}
+                style={[styles.actionBtn, styles.acceptBtn]}
+            >
+                <Text style={styles.acceptBtnText}>ACCEPT & ASSIGN</Text>
+            </TouchableOpacity>
+        </View>
+      )}
+
+      <Text style={styles.footerDate}>{item.orderCode} • {item.date}</Text>
+    </View>
+  );
+});
+
 const Vendors = () => {
   // 1. STATE MANAGEMENT
   const [orders, setOrders] = useState<Order[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]); // Store Batches Here
+  const [batches, setBatches] = useState<Batch[]>([]); 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'Pending' | 'Delivered'>('Pending');
@@ -60,7 +159,7 @@ const Vendors = () => {
   // Modal States
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
-  const [breedModalVisible, setBreedModalVisible] = useState(false); // Used for Batch Select now
+  const [breedModalVisible, setBreedModalVisible] = useState(false); 
   
   // Selection States
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -76,7 +175,7 @@ const Vendors = () => {
   // Batch & Breed State
   const [selectedBatchCode, setSelectedBatchCode] = useState(''); 
   const [selectedBatchId, setSelectedBatchId] = useState<number>(0);
-  const [selectedBreed, setSelectedBreed] = useState('Select Batch First'); // Auto-filled
+  const [selectedBreed, setSelectedBreed] = useState('Select Batch First'); 
 
   // --- FORM STATES (ASSIGN VEHICLE) ---
   const [vehicleNo, setVehicleNo] = useState('');
@@ -90,13 +189,13 @@ const Vendors = () => {
   const totalAmount = (parseFloat(finalWeight || '0') * parseFloat(pricePerKg || '0')).toFixed(0);
 
   // --- API URLS ---
-  const GET_ORDERS_URL = 'http://192.168.0.217:8081/api/orders/admin/allOrders';
-  const PLACE_ORDER_URL = 'http://192.168.0.217:8081/api/orders/vendor/place-order';
-  const GET_STOCK_URL = 'http://192.168.0.217:8081/api/hens/getStock'; // To find Batch ID
+  const GET_ORDERS_URL = 'http://192.168.0.110:8081/api/orders/admin/allOrders';
+  const PLACE_ORDER_URL = 'http://192.168.0.110:8081/api/orders/vendor/place-order';
+  const GET_STOCK_URL = 'http://192.168.0.110:8081/api/hens/getStock'; 
 
-  // --- FETCH DATA (Orders & Batches) ---
+  // --- FETCH DATA ---
   const fetchData = async () => {
-    setRefreshing(true);
+    if (!refreshing) setLoading(true); // Don't show full loader on pull-to-refresh
     try {
       // 1. Fetch Orders
       const ordersRes = await rootApi.get(GET_ORDERS_URL);
@@ -118,16 +217,18 @@ const Vendors = () => {
             vehicleNo: item.vehicleNumber,
             driverName: item.driverName,
             driverPhone: item.driverPhone,
-            finalWeight: item.weight ? item.weight.toString() : null,
-            finalQuantity: item.quantity ? item.quantity.toString() : null,
-            pricePerKg: null,
-            totalAmount: null
+            // Use receivedWeight if available (for Dispatched orders), else weight
+            finalWeight: item.receivedWeight ? item.receivedWeight.toString() : (item.weight ? item.weight.toString() : null),
+            finalQuantity: item.receivedQuantity ? item.receivedQuantity.toString() : (item.quantity ? item.quantity.toString() : null),
+            // Map Price Info
+            pricePerKg: item.pricePerKg ? item.pricePerKg.toString() : null,
+            totalAmount: item.totalPrice ? item.totalPrice.toString() : null
           }
         }));
         setOrders(mappedOrders.reverse());
       }
 
-      // 2. Fetch Batches (For Dropdown)
+      // 2. Fetch Batches
       const stockRes = await rootApi.get(GET_STOCK_URL);
       if (stockRes.status === 200 && Array.isArray(stockRes.data)) {
         setBatches(stockRes.data);
@@ -136,6 +237,7 @@ const Vendors = () => {
     } catch (error) {
       console.error("Fetch Data Error:", error);
     } finally {
+      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -146,7 +248,12 @@ const Vendors = () => {
     }, [])
   );
 
-  // --- ACTION: ADD NEW ORDER ---
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  // --- ACTIONS ---
   const handleAddOrder = async () => {
     if (!vendorName || !phone || !orderValue || !address || !shopName || !selectedBatchCode) {
       Alert.alert("Missing Details", "Please fill all details including Batch Code.");
@@ -160,14 +267,13 @@ const Vendors = () => {
 
     setLoading(true);
     try {
-      // Payload with Auto-Found Batch ID
       const payload = {
         vendorName: vendorName,
         phoneNumber: phone,
         shopName: shopName,
         address: address,
         batchCode: selectedBatchCode,
-        batchId: selectedBatchId, // Solution: ID from selected batch
+        batchId: selectedBatchId,
         breed: selectedBreed, 
         deliveryDate: new Date().toISOString().split('T')[0],
         quantity: orderType === 'Quantity' ? parseInt(orderValue) : 0,
@@ -202,8 +308,8 @@ const Vendors = () => {
     setSelectedBreed('Select Batch First');
   };
 
-  // --- ACTION: ACCEPT & ASSIGN ---
-  const openAssignModal = (order: Order) => {
+  // --- HANDLERS (Wrapped in useCallback) ---
+  const openAssignModal = useCallback((order: Order) => {
     setSelectedOrder(order);
     setAssignModalVisible(true);
     setVehicleNo('');
@@ -212,25 +318,21 @@ const Vendors = () => {
     setFinalWeight('');
     setFinalQuantity(order.type === 'Quantity' ? order.value : '');
     setPricePerKg('');
-  };
+  }, []);
 
-  // --- ACTION: REJECT ---
-  const handleReject = (id: string) => {
+  const handleReject = useCallback((id: string) => {
     Alert.alert("Confirm Reject", "Are you sure you want to reject this order?", [
         { text: "Cancel", style: "cancel" },
         { 
             text: "Reject", 
             style: "destructive", 
             onPress: () => {
-                // Mock update for reject logic as endpoint isn't specified
-                const updatedOrders = orders.map(o => o.id === id ? { ...o, status: 'REJECTED' as const } : o);
-                setOrders(updatedOrders);
+                setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'REJECTED' as const } : o));
             }
         }
     ]);
-  };
+  }, []);
 
-  // --- ACTION: CONFIRM ASSIGNMENT ---
   const handleConfirmAssignment = async () => {
     if(!selectedOrder) return;
     if(!vehicleNo || !driverName || !driverPhone || !finalWeight || !pricePerKg) {
@@ -240,7 +342,7 @@ const Vendors = () => {
 
     setLoading(true);
     try {
-      const ADD_DELIVERY_URL = `http://192.168.0.217:8081/api/orders/admin/add-delivery/${selectedOrder.id}`;
+      const ADD_DELIVERY_URL = `http://192.168.0.110:8081/api/orders/admin/add-delivery/${selectedOrder.id}`;
       
       const payload = {
         vehicleNumber: vehicleNo,
@@ -272,86 +374,27 @@ const Vendors = () => {
     ? orders.filter(o => o.status === 'PENDING')
     : orders.filter(o => o.status !== 'PENDING');
 
-  // --- RENDER ORDER ITEM ---
-  const renderOrderItem = ({ item }: { item: Order }) => (
-    <View className="bg-white mx-5 mb-4 p-4 rounded-2xl shadow-sm border border-gray-100">
-      <View className="flex-row justify-between items-start">
-        <View className="flex-1 mr-2">
-          <Text className="text-gray-800 font-bold text-lg">{item.vendorName}</Text>
-          <Text className="text-gray-600 text-xs font-semibold">{item.shopName}</Text>
-          <Text className="text-gray-500 text-xs mt-1">📍 {item.address}</Text>
-          <Text className="text-gray-400 text-xs mt-0.5">📞 {item.phone}</Text>
-        </View>
-        <View className={`px-3 py-1 rounded-full ${
-            item.status === 'PENDING' ? 'bg-orange-100' : 
-            item.status === 'DELIVERED' ? 'bg-green-100' : 'bg-red-100'
-        }`}>
-          <Text className={`text-[10px] font-bold ${
-             item.status === 'PENDING' ? 'text-orange-700' : 
-             item.status === 'DELIVERED' ? 'text-green-700' : 'text-red-700'
-          }`}>
-            {item.status}
-          </Text>
-        </View>
-      </View>
-
-      <View className="h-[1px] bg-gray-100 my-3" />
-
-      <View className="flex-row justify-between items-center mb-2">
-        <View>
-            <Text className="text-gray-400 text-[10px] uppercase">Breed / Batch</Text>
-            <Text className="text-gray-700 font-semibold text-sm">{item.breed}</Text>
-            <Text className="text-gray-400 text-[10px]">{item.batchCode}</Text>
-        </View>
-        <View>
-            <Text className="text-gray-400 text-[10px] uppercase text-right">Requested ({item.type})</Text>
-            <Text className="text-orange-600 font-bold text-lg text-right">
-                {item.value} <Text className="text-sm font-normal text-gray-500">{item.type === 'Weight' ? 'kg' : 'Birds'}</Text>
-            </Text>
-        </View>
-      </View>
-
-      {item.status !== 'PENDING' && item.fulfillment?.vehicleNo && (
-        <View className="bg-gray-50 p-3 rounded-xl mt-2 border border-gray-200">
-            <Text className="text-gray-800 font-bold text-xs mb-1">🚚 DISPATCH REPORT</Text>
-            <Text className="text-gray-600 text-xs">Veh: {item.fulfillment.vehicleNo} | Driver: {item.fulfillment.driverName}</Text>
-            <Text className="text-green-700 text-xs font-bold mt-1">Bill Amount: ₹{item.fulfillment.totalAmount}</Text>
-        </View>
-      )}
-
-      {item.status === 'PENDING' && (
-        <View className="flex-row gap-3 mt-4">
-            <TouchableOpacity 
-                onPress={() => handleReject(item.id)}
-                className="flex-1 bg-red-50 py-3 rounded-xl items-center border border-red-100"
-            >
-                <Text className="text-red-600 font-bold text-xs">REJECT</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-                onPress={() => openAssignModal(item)}
-                className="flex-1 bg-orange-600 py-3 rounded-xl items-center shadow-sm"
-            >
-                <Text className="text-white font-bold text-xs">ACCEPT & ASSIGN</Text>
-            </TouchableOpacity>
-        </View>
-      )}
-
-      <Text className="text-gray-300 text-[10px] mt-3 text-right">{item.orderCode} • {item.date}</Text>
-    </View>
-  );
+  // --- 2. RENDER ITEM (Optimized) ---
+  const renderItem = useCallback(({ item }: { item: Order }) => (
+    <OrderCard 
+        item={item} 
+        onReject={handleReject} 
+        onAssign={openAssignModal} 
+    />
+  ), [handleReject, openAssignModal]);
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={styles.container}>
       
       {/* HEADER */}
-      <View className="bg-orange-600 pt-12 pb-6 px-6 rounded-b-[30px] shadow-lg mb-4">
-        <View className="flex-row justify-between items-center">
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
             <View>
-                <Text className="text-orange-100 text-sm font-medium">Vendor Management</Text>
-                <Text className="text-white text-2xl font-bold">Orders List</Text>
+                <Text style={styles.headerSub}>Vendor Management</Text>
+                <Text style={styles.headerTitle}>Orders List</Text>
             </View>
             <TouchableOpacity 
-                className="bg-white p-3 rounded-full shadow-md active:opacity-90"
+                style={styles.addButton}
                 onPress={() => setAddModalVisible(true)}
             >
                 <Ionicons name="add" size={26} color="#ea580c" />
@@ -360,105 +403,95 @@ const Vendors = () => {
       </View>
 
       {/* TAB SWITCHER */}
-      <View className="flex-row mx-5 mb-4 bg-gray-200 rounded-xl p-1">
+      <View style={styles.tabContainer}>
         <TouchableOpacity 
-            className={`flex-1 py-3 rounded-lg items-center ${activeTab === 'Pending' ? 'bg-white shadow-sm' : ''}`}
+            style={[styles.tab, activeTab === 'Pending' && styles.activeTab]}
             onPress={() => setActiveTab('Pending')}
         >
-            <Text className={`font-bold text-sm ${activeTab === 'Pending' ? 'text-orange-600' : 'text-gray-500'}`}>Pending</Text>
+            <Text style={[styles.tabText, activeTab === 'Pending' && styles.activeTabText]}>Pending</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-            className={`flex-1 py-3 rounded-lg items-center ${activeTab === 'Delivered' ? 'bg-white shadow-sm' : ''}`}
+            style={[styles.tab, activeTab === 'Delivered' && styles.activeTab]}
             onPress={() => setActiveTab('Delivered')}
         >
-            <Text className={`font-bold text-sm ${activeTab === 'Delivered' ? 'text-green-600' : 'text-gray-500'}`}>Delivered</Text>
+            <Text style={[styles.tabText, activeTab === 'Delivered' && styles.activeTabText2]}>Delivered</Text>
         </TouchableOpacity>
       </View>
 
       {/* LIST CONTENT */}
-      <FlatList
-        data={filteredData}
-        keyExtractor={(item) => item.id}
-        renderItem={renderOrderItem}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-            <View className="items-center justify-center mt-20 opacity-50">
-                <Ionicons name={activeTab === 'Pending' ? "time-outline" : "checkmark-done-circle-outline"} size={50} color="gray" />
-                <Text className="text-gray-400 mt-2 font-medium">No {activeTab} Orders Found</Text>
-            </View>
-        }
-      />
+      {loading && !refreshing ? (
+          <View style={styles.center}><ActivityIndicator size="large" color="#ea580c" /></View>
+      ) : (
+          <FlatList
+            data={filteredData}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={
+                <View style={styles.center}>
+                    <Ionicons name={activeTab === 'Pending' ? "time-outline" : "checkmark-done-circle-outline"} size={50} color="gray" />
+                    <Text style={styles.emptyText}>No {activeTab} Orders Found</Text>
+                </View>
+            }
+          />
+      )}
 
       {/* --- ADD MODAL --- */}
       <Modal animationType="slide" transparent={true} visible={addModalVisible} onRequestClose={() => setAddModalVisible(false)}>
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-white rounded-t-3xl p-6 h-[90%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-xl font-bold text-gray-800">New Order 📝</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)} className="bg-gray-100 p-2 rounded-full">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>New Order 📝</Text>
+              <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.closeBtn}>
                 <Ionicons name="close" size={22} color="#374151" />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20}}>
-              <View className="space-y-4">
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">VENDOR NAME</Text>
-                    <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800" placeholder="e.g. Ramesh" value={vendorName} onChangeText={setVendorName} />
-                </View>
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">SHOP NAME</Text>
-                    <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800" placeholder="e.g. Ramesh Chicken Center" value={shopName} onChangeText={setShopName} />
-                </View>
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">PHONE</Text>
-                    <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800" placeholder="e.g. 98480..." keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
-                </View>
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">DELIVERY ADDRESS</Text>
-                    <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800" placeholder="Full Address" value={address} onChangeText={setAddress} multiline />
+                <Text style={styles.inputLabel}>VENDOR NAME</Text>
+                <TextInput style={styles.input} placeholder="e.g. Ramesh" value={vendorName} onChangeText={setVendorName} />
+                
+                <Text style={styles.inputLabel}>SHOP NAME</Text>
+                <TextInput style={styles.input} placeholder="e.g. Ramesh Chicken Center" value={shopName} onChangeText={setShopName} />
+                
+                <Text style={styles.inputLabel}>PHONE</Text>
+                <TextInput style={styles.input} placeholder="e.g. 98480..." keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+                
+                <Text style={styles.inputLabel}>DELIVERY ADDRESS</Text>
+                <TextInput style={[styles.input, {height: 60}]} placeholder="Full Address" value={address} onChangeText={setAddress} multiline />
+
+                {/* BATCH SELECTION */}
+                <Text style={styles.inputLabel}>BATCH CODE (SELECT FROM STOCK)</Text>
+                <TouchableOpacity style={[styles.input, {justifyContent: 'space-between', flexDirection: 'row', alignItems:'center'}]} onPress={() => setBreedModalVisible(true)}>
+                    <Text style={selectedBatchCode ? styles.inputText : styles.placeholderText}>
+                        {selectedBatchCode || "Select Batch"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="gray" />
+                </TouchableOpacity>
+
+                <Text style={styles.inputLabel}>BREED (AUTO-FILLED)</Text>
+                <View style={[styles.input, {backgroundColor: '#F3F4F6'}]}>
+                    <Text style={{color: '#4B5563'}}>{selectedBreed}</Text>
                 </View>
 
-                {/* BATCH SELECTION (Populates ID & Breed) */}
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">BATCH CODE (SELECT FROM STOCK)</Text>
-                    <TouchableOpacity className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex-row justify-between" onPress={() => setBreedModalVisible(true)}>
-                        <Text className={`text-gray-800 ${selectedBatchCode ? 'font-bold' : 'text-gray-400'}`}>
-                            {selectedBatchCode || "Select Batch"}
-                        </Text>
-                        <Ionicons name="chevron-down" size={20} color="gray" />
+                <Text style={styles.inputLabel}>ORDER BY</Text>
+                <View style={styles.radioContainer}>
+                    <TouchableOpacity style={[styles.radioBtn, orderType === 'Weight' && styles.radioActive]} onPress={() => setOrderType('Weight')}>
+                        <Text style={[styles.radioText, orderType === 'Weight' && styles.radioTextActive]}>Weight (Kg)</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.radioBtn, orderType === 'Quantity' && styles.radioActive]} onPress={() => setOrderType('Quantity')}>
+                        <Text style={[styles.radioText, orderType === 'Quantity' && styles.radioTextActive]}>Quantity (Birds)</Text>
                     </TouchableOpacity>
                 </View>
 
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">BREED (AUTO-FILLED)</Text>
-                    <View className="bg-gray-100 border border-gray-200 rounded-xl px-4 py-3">
-                        <Text className="text-gray-600">{selectedBreed}</Text>
-                    </View>
-                </View>
+                <Text style={styles.inputLabel}>{orderType === 'Weight' ? 'WEIGHT (KG)' : 'QUANTITY (BIRDS)'}</Text>
+                <TextInput style={[styles.input, {fontWeight: 'bold', fontSize: 18}]} placeholder="0" keyboardType="numeric" value={orderValue} onChangeText={setOrderValue} />
 
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-2 ml-1">ORDER BY</Text>
-                    <View className="flex-row bg-gray-100 p-1 rounded-xl">
-                        <TouchableOpacity className={`flex-1 py-3 rounded-lg items-center ${orderType === 'Weight' ? 'bg-white shadow-sm' : ''}`} onPress={() => setOrderType('Weight')}>
-                            <Text className={`font-bold text-xs ${orderType === 'Weight' ? 'text-orange-600' : 'text-gray-400'}`}>Weight (Kg)</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity className={`flex-1 py-3 rounded-lg items-center ${orderType === 'Quantity' ? 'bg-white shadow-sm' : ''}`} onPress={() => setOrderType('Quantity')}>
-                            <Text className={`font-bold text-xs ${orderType === 'Quantity' ? 'text-orange-600' : 'text-gray-400'}`}>Quantity (Birds)</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                <View>
-                    <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">{orderType === 'Weight' ? 'WEIGHT (KG)' : 'QUANTITY (BIRDS)'}</Text>
-                    <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 font-bold text-lg" placeholder="0" keyboardType="numeric" value={orderValue} onChangeText={setOrderValue} />
-                </View>
-              </View>
-
-              <TouchableOpacity className={`mt-6 py-4 rounded-xl items-center ${loading ? 'bg-orange-300' : 'bg-orange-600'}`} onPress={handleAddOrder} disabled={loading}>
-                 {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-bold">CREATE ORDER</Text>}
-              </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleAddOrder} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>CREATE ORDER</Text>}
+                </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
@@ -466,65 +499,63 @@ const Vendors = () => {
 
       {/* --- ASSIGN MODAL --- */}
       <Modal animationType="slide" transparent={true} visible={assignModalVisible} onRequestClose={() => setAssignModalVisible(false)}>
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-white rounded-t-3xl p-6 h-[85%] shadow-2xl">
-             <View className="flex-row justify-between items-center mb-4">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+             <View style={styles.modalHeader}>
                 <View>
-                    <Text className="text-xl font-bold text-gray-800">Assign Vehicle 🚚</Text>
-                    <Text className="text-xs text-gray-400">For: {selectedOrder?.vendorName}</Text>
+                    <Text style={styles.modalTitle}>Assign Vehicle 🚚</Text>
+                    <Text style={styles.modalSub}>For: {selectedOrder?.vendorName}</Text>
                 </View>
-                <TouchableOpacity onPress={() => setAssignModalVisible(false)} className="bg-gray-100 p-2 rounded-full">
+                <TouchableOpacity onPress={() => setAssignModalVisible(false)} style={styles.closeBtn}>
                     <Ionicons name="close" size={22} color="#374151" />
                 </TouchableOpacity>
              </View>
 
              <ScrollView showsVerticalScrollIndicator={false}>
-                <Text className="text-orange-600 font-bold text-xs mb-3 tracking-widest border-b border-gray-100 pb-1">TRANSPORT DETAILS</Text>
-                <View className="space-y-4 mb-4">
-                    <View>
-                        <Text className="text-gray-500 text-[10px] font-bold mb-1">VEHICLE NO</Text>
-                        <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-gray-800" placeholder="TS07..." value={vehicleNo} onChangeText={setVehicleNo} />
-                    </View>
-                    <View className="flex-row space-x-3">
-                        <View className="flex-1">
-                            <Text className="text-gray-500 text-[10px] font-bold mb-1">DRIVER NAME</Text>
-                            <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-gray-800" placeholder="Name" value={driverName} onChangeText={setDriverName} />
-                        </View>
-                        <View className="flex-1">
-                            <Text className="text-gray-500 text-[10px] font-bold mb-1">DRIVER PHONE</Text>
-                            <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-gray-800" placeholder="98..." keyboardType="phone-pad" value={driverPhone} onChangeText={setDriverPhone} />
-                        </View>
-                    </View>
-                </View>
-
-                <Text className="text-orange-600 font-bold text-xs mb-3 tracking-widest border-b border-gray-100 pb-1 mt-2">BILLING & MEASUREMENT</Text>
+                <Text style={styles.sectionHeader}>TRANSPORT DETAILS</Text>
                 
-                <View className="flex-row space-x-3 mb-4">
-                    <View className="flex-1">
-                        <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">TOTAL WEIGHT (KG)</Text>
-                        <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 font-bold text-lg" placeholder="0.0" keyboardType="numeric" value={finalWeight} onChangeText={setFinalWeight} />
+                <Text style={styles.inputLabel}>VEHICLE NO</Text>
+                <TextInput style={styles.input} placeholder="TS07..." value={vehicleNo} onChangeText={setVehicleNo} />
+                
+                <View style={styles.row}>
+                    <View style={{flex: 1, marginRight: 8}}>
+                        <Text style={styles.inputLabel}>DRIVER NAME</Text>
+                        <TextInput style={styles.input} placeholder="Name" value={driverName} onChangeText={setDriverName} />
                     </View>
-                    <View className="flex-1">
-                        <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">TOTAL HENS (QTY)</Text>
-                        <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 font-bold text-lg" placeholder="0" keyboardType="numeric" value={finalQuantity} onChangeText={setFinalQuantity} />
+                    <View style={{flex: 1}}>
+                        <Text style={styles.inputLabel}>DRIVER PHONE</Text>
+                        <TextInput style={styles.input} placeholder="98..." keyboardType="phone-pad" value={driverPhone} onChangeText={setDriverPhone} />
                     </View>
                 </View>
 
-                <View className="flex-row space-x-3 mb-4">
-                    <View className="flex-1">
-                        <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">PRICE PER KG (₹)</Text>
-                        <TextInput className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 font-bold text-lg" placeholder="0" keyboardType="numeric" value={pricePerKg} onChangeText={setPricePerKg} />
+                <Text style={[styles.sectionHeader, {marginTop: 15}]}>BILLING & MEASUREMENT</Text>
+                
+                <View style={styles.row}>
+                    <View style={{flex: 1, marginRight: 8}}>
+                        <Text style={styles.inputLabel}>TOTAL WEIGHT (KG)</Text>
+                        <TextInput style={[styles.input, styles.boldInput]} placeholder="0.0" keyboardType="numeric" value={finalWeight} onChangeText={setFinalWeight} />
                     </View>
-                    <View className="flex-1">
-                        <Text className="text-gray-500 text-xs font-bold mb-1 ml-1">TOTAL AMOUNT (₹)</Text>
-                        <View className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 justify-center">
-                            <Text className="text-green-700 font-bold text-lg">{totalAmount !== 'NaN' ? totalAmount : '0'}</Text>
+                    <View style={{flex: 1}}>
+                        <Text style={styles.inputLabel}>TOTAL HENS (QTY)</Text>
+                        <TextInput style={[styles.input, styles.boldInput]} placeholder="0" keyboardType="numeric" value={finalQuantity} onChangeText={setFinalQuantity} />
+                    </View>
+                </View>
+
+                <View style={styles.row}>
+                    <View style={{flex: 1, marginRight: 8}}>
+                        <Text style={styles.inputLabel}>PRICE PER KG (₹)</Text>
+                        <TextInput style={[styles.input, styles.boldInput]} placeholder="0" keyboardType="numeric" value={pricePerKg} onChangeText={setPricePerKg} />
+                    </View>
+                    <View style={{flex: 1}}>
+                        <Text style={styles.inputLabel}>TOTAL AMOUNT (₹)</Text>
+                        <View style={styles.totalBox}>
+                            <Text style={styles.totalText}>{totalAmount !== 'NaN' ? totalAmount : '0'}</Text>
                         </View>
                     </View>
                 </View>
 
-                <TouchableOpacity className={`mt-6 py-4 rounded-xl items-center shadow-lg mb-10 ${loading ? 'bg-green-400' : 'bg-green-600'}`} onPress={handleConfirmAssignment} disabled={loading}>
-                    {loading ? <ActivityIndicator color="#fff"/> : <Text className="text-white font-bold">CONFIRM & DISPATCH 🚚</Text>}
+                <TouchableOpacity style={[styles.submitBtn, {backgroundColor: '#16a34a', marginTop: 20}]} onPress={handleConfirmAssignment} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#fff"/> : <Text style={styles.submitBtnText}>CONFIRM & DISPATCH 🚚</Text>}
                 </TouchableOpacity>
              </ScrollView>
           </View>
@@ -533,19 +564,19 @@ const Vendors = () => {
 
       {/* --- STOCK BATCH SELECTION MODAL --- */}
       <Modal animationType="fade" transparent={true} visible={breedModalVisible} onRequestClose={() => setBreedModalVisible(false)}>
-        <View className="flex-1 justify-center items-center bg-black/60 px-5">
-            <View className="bg-white w-full max-w-sm rounded-2xl p-4 shadow-xl max-h-[400px]">
-                <Text className="text-lg font-bold text-gray-800 mb-4 text-center">Select Stock Batch</Text>
+        <View style={[styles.modalOverlay, {justifyContent: 'center', alignItems: 'center', padding: 20}]}>
+            <View style={[styles.modalContent, {width: '100%', maxHeight: 400}]}>
+                <Text style={[styles.modalTitle, {textAlign: 'center', marginBottom: 15}]}>Select Stock Batch</Text>
                 
                 {batches.length === 0 ? (
-                    <Text className="text-center text-gray-400 mb-4">No Batches Available. Add Stock in Dashboard first.</Text>
+                    <Text style={{textAlign: 'center', color: 'gray', marginBottom: 20}}>No Batches Available. Add Stock in Dashboard first.</Text>
                 ) : (
                     <FlatList 
                         data={batches}
                         keyExtractor={(item) => item.id.toString()}
                         renderItem={({item}) => (
                             <TouchableOpacity 
-                                className={`py-3 px-4 mb-2 rounded-xl border ${selectedBatchCode === item.batchCode ? 'bg-orange-50 border-orange-500' : 'bg-white border-gray-100'}`} 
+                                style={[styles.batchItem, selectedBatchCode === item.batchCode && styles.batchItemActive]}
                                 onPress={() => { 
                                     setSelectedBatchCode(item.batchCode);
                                     setSelectedBatchId(item.id);
@@ -553,20 +584,20 @@ const Vendors = () => {
                                     setBreedModalVisible(false); 
                                 }}
                             >
-                                <View className="flex-row justify-between items-center">
+                                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
                                     <View>
-                                        <Text className="text-base font-bold text-gray-800">{item.batchCode}</Text>
-                                        <Text className="text-xs text-gray-500">{item.breed} • Stock: {item.availableHens}</Text>
+                                        <Text style={styles.batchCode}>{item.batchCode}</Text>
+                                        <Text style={styles.batchInfo}>{item.breed} • Stock: {item.availableHens}</Text>
                                     </View>
-                                    {selectedBatchCode === item.batchCode && <Ionicons name="checkmark-circle" size={20} color="#ea580c" />}
+                                    {selectedBatchCode === item.batchCode && <Ionicons name="checkmark-circle" size={24} color="#ea580c" />}
                                 </View>
                             </TouchableOpacity>
                         )}
                     />
                 )}
 
-                <TouchableOpacity className="mt-4 py-3 bg-gray-100 rounded-xl items-center" onPress={() => setBreedModalVisible(false)}>
-                    <Text className="text-gray-500 font-bold">Cancel</Text>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setBreedModalVisible(false)}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -575,5 +606,109 @@ const Vendors = () => {
     </View>
   );
 };
+
+// --- STYLES ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { color: 'gray', marginTop: 10, fontSize: 16, fontWeight: '500' },
+  
+  // Header
+  header: { backgroundColor: '#ea580c', paddingTop: 40, paddingBottom: 20, paddingHorizontal: 20, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, marginBottom: 15, elevation: 5 },
+  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerSub: { color: '#ffedd5', fontSize: 14, fontWeight: '500' },
+  headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  addButton: { backgroundColor: '#fff', padding: 10, borderRadius: 25, elevation: 3 },
+
+  // Tabs
+  tabContainer: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 15, backgroundColor: '#E5E7EB', borderRadius: 12, padding: 4 },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  activeTab: { backgroundColor: '#fff', elevation: 2 },
+  tabText: { fontWeight: 'bold', fontSize: 14, color: '#6B7280' },
+  activeTabText: { color: '#ea580c' },
+  activeTabText2: { color: '#16a34a' },
+
+  // Cards
+  card: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 15, padding: 15, borderRadius: 16, elevation: 2, borderWidth: 1, borderColor: '#F3F4F6' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  vendorName: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+  shopName: { fontSize: 12, fontWeight: '600', color: '#4B5563', marginBottom: 2 },
+  address: { fontSize: 12, color: '#6B7280', marginTop: 4 },
+  phone: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusPending: { backgroundColor: '#FFEDD5' },
+  statusDelivered: { backgroundColor: '#DCFCE7' },
+  statusRejected: { backgroundColor: '#FEE2E2' },
+  statusText: { fontSize: 10, fontWeight: 'bold' },
+  textPending: { color: '#C2410C' },
+  textDelivered: { color: '#15803D' },
+  textRejected: { color: '#B91C1C' },
+
+  divider: { height: 1, backgroundColor: '#F3F4F6', marginVertical: 12 },
+
+  detailsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  label: { color: '#9CA3AF', fontSize: 10, textTransform: 'uppercase', fontWeight: 'bold' },
+  value: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  subValue: { fontSize: 10, color: '#9CA3AF' },
+  largeValue: { fontSize: 20, fontWeight: 'bold', color: '#ea580c' },
+  unit: { fontSize: 14, fontWeight: 'normal', color: '#6B7280' },
+
+  // Updated Dispatch Box Styles
+  dispatchBox: { backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12, marginTop: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  dispatchTitle: { color: '#1F2937', fontWeight: 'bold', fontSize: 12, marginBottom: 8, letterSpacing: 0.5 },
+  dispatchRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  dispatchLabel: { fontSize: 11, color: '#6B7280', fontWeight: '500' },
+  dispatchValue: { fontSize: 11, color: '#374151', fontWeight: 'bold' },
+  dispatchDivider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 6 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  totalLabel: { fontSize: 12, color: '#15803D', fontWeight: 'bold' },
+  totalValue: { fontSize: 14, color: '#15803D', fontWeight: 'bold' },
+
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 15 },
+  actionBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  rejectBtn: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FEE2E2' },
+  acceptBtn: { backgroundColor: '#ea580c', elevation: 2 },
+  rejectBtnText: { color: '#DC2626', fontWeight: 'bold', fontSize: 12 },
+  acceptBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+
+  footerDate: { textAlign: 'right', fontSize: 10, color: '#D1D5DB', marginTop: 10 },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
+  modalSub: { fontSize: 12, color: '#9CA3AF' },
+  closeBtn: { backgroundColor: '#F3F4F6', padding: 8, borderRadius: 20 },
+
+  inputLabel: { fontSize: 12, fontWeight: 'bold', color: '#6B7280', marginBottom: 6, marginLeft: 2 },
+  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, padding: 12, marginBottom: 15, fontSize: 14, color: '#1F2937' },
+  placeholderText: { color: '#9CA3AF' },
+  inputText: { color: '#1F2937', fontWeight: '500' },
+  boldInput: { fontWeight: 'bold', fontSize: 16 },
+
+  radioContainer: { flexDirection: 'row', backgroundColor: '#F3F4F6', padding: 4, borderRadius: 10, marginBottom: 15 },
+  radioBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  radioActive: { backgroundColor: '#fff', elevation: 1 },
+  radioText: { fontSize: 12, fontWeight: 'bold', color: '#9CA3AF' },
+  radioTextActive: { color: '#ea580c' },
+
+  submitBtn: { backgroundColor: '#ea580c', paddingVertical: 15, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
+  row: { flexDirection: 'row' },
+  sectionHeader: { color: '#ea580c', fontWeight: 'bold', fontSize: 12, letterSpacing: 1, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 5 },
+  totalBox: { backgroundColor: '#DCFCE7', borderWidth: 1, borderColor: '#BBF7D0', borderRadius: 10, padding: 12, alignItems: 'center', justifyContent: 'center' },
+  totalText: { color: '#15803D', fontWeight: 'bold', fontSize: 18 },
+
+  // Batch List
+  batchItem: { padding: 15, marginBottom: 10, borderRadius: 12, borderWidth: 1, borderColor: '#F3F4F6', backgroundColor: '#fff' },
+  batchItemActive: { backgroundColor: '#FFF7ED', borderColor: '#F97316' },
+  batchCode: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
+  batchInfo: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  cancelBtn: { marginTop: 10, padding: 12, backgroundColor: '#F3F4F6', borderRadius: 10, alignItems: 'center' },
+  cancelBtnText: { color: '#6B7280', fontWeight: 'bold' }
+});
 
 export default Vendors;
