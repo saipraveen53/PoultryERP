@@ -117,7 +117,7 @@ const Dashboard = () => {
   // --- API URLS ---
   const GET_STOCK_URL = 'http://192.168.0.110:8081/api/farm/hens/getStock';
   const ADD_STOCK_URL = 'http://192.168.0.110:8081/api/farm/hens/addStock';
-  const UPDATE_STOCK_URL = 'http://192.168.0.110:8081/farm/api/hens/updateStock';
+  const UPDATE_STOCK_URL = 'http://192.168.0.110:8081/api/farm/hens/updateStock';
 
   // --- FETCH REALTIME DATA ---
   const fetchDashboardData = async () => {
