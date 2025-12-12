@@ -58,6 +58,7 @@ export default function Login() {
         password: password,
       };
 
+      // 2. API Call: rootApi.post(api/auth/login)
       // Existing Login Endpoint (Port 8083)
       const response = await axios.post('http://192.168.0.110:8083/api/auth/login', loginPayload);
       
