@@ -40,4 +40,4 @@ const createAxiosInstance = (baseURL: string): AxiosInstance => {
   return instance;
 };
 
-export const rootApi: AxiosInstance = createAxiosInstance("http://192.168.0.110:8080");
+export const rootApi: AxiosInstance = createAxiosInstance("http://192.168.0.110:8081");
