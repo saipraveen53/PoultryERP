@@ -43,8 +43,8 @@ type Order = {
   totalPrice?: number | null;
 };
 
-const BASE = "http://192.168.0.110:8081";
-const MY_ORDERS_PATH = "/api/orders/vendor/my-orders";
+
+const MY_ORDERS_PATH = "http://192.168.0.110:8081/api/orders/vendor/my-orders";
 
 export default function History(): JSX.Element {
   const { width } = Dimensions.get("window");

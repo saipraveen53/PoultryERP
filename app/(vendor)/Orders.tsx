@@ -53,7 +53,7 @@ export default function Orders(): JSX.Element {
   setLoading(true);
   setError(null);
   try {
-    const res = await rootApi.get('/api/orders/vendor/available-batches', { signal });
+    const res = await rootApi.get('http://192.168.0.110:8081/api/orders/vendor/available-batches', { signal });
     setBatches(Array.isArray(res.data) ? res.data : []);
   } catch (e: any) {
     if (e.name === "AbortError") return;
@@ -417,7 +417,7 @@ function OrderForm({
 
     setLoading(true);
     try {
-  const res = await rootApi.post("/api/orders/vendor/place-order", payload);
+  const res = await rootApi.post("http://192.168.0.110:8081/api/orders/vendor/place-order", payload);
   if (res.status === 200 || res.status === 201) {
     Alert.alert("Success", "Your order has been placed.");
     onPlaced();
