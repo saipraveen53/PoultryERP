@@ -1,3 +1,4 @@
+// app/(vendor)/Orders.tsx
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -13,6 +14,7 @@ import {
   SafeAreaView,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -20,6 +22,7 @@ import {
 } from "react-native";
 import { rootApi } from "../(utils)/axiosInstance";
 
+// --- TYPES ---
 type Batch = {
   id: number | string;
   totalHens: number;
@@ -29,8 +32,8 @@ type Batch = {
   availableHens: number;
 };
 
-const BATCHES_ENDPOINT = "http://192.168.0.110:8081/api/orders/vendor/available-batches";
-const PLACE_ORDER_ENDPOINT = "http://192.168.0.110:8081/api/orders/vendor/place-order";
+const BATCHES_ENDPOINT = "http://192.168.0.110:8081/api/farm/orders/vendor/available-batches";
+const PLACE_ORDER_ENDPOINT = "http://192.168.0.110:8081/api/farm/orders/vendor/place-order";
 
 export default function Orders(): JSX.Element {
   const router = useRouter();
@@ -41,40 +44,66 @@ export default function Orders(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
 
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "sizeDesc" | "availableDesc">("recent");
 
-  // selected batch -> show order form
+  // Selected batch -> Show order form
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
 
+  // --- ANIMATED HEN ---
+  const AnimatedHen = () => {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scale, { toValue: 1.15, duration: 450, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 0.95, duration: 450, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }, [scale]);
+
+    return (
+      <Animated.Text
+        accessibilityLabel="Loading hen"
+        style={{ transform: [{ scale }], fontSize: 56, marginBottom: 6 }}
+      >
+        🐔
+      </Animated.Text>
+    );
+  };
+
+  const Cock = () => <Text style={{ marginRight: 8 }}>🐓</Text>;
+
+  // --- API CALLS ---
   async function fetchBatches(signal?: AbortSignal) {
-  setLoading(true);
-  setError(null);
-  try {
-    const res = await rootApi.get('http://192.168.0.110:8081/api/orders/vendor/available-batches', { signal });
-    setBatches(Array.isArray(res.data) ? res.data : []);
-  } catch (e: any) {
-    if (e.name === "AbortError") return;
-    console.error("Fetch batches error", e);
-    // show friendly message for 401/403
-    const status = e?.response?.status;
-    if (status === 401) {
-      Alert.alert("Unauthorized", "Session expired. Please login again.");
-      router.replace("/");
-      return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await rootApi.get(BATCHES_ENDPOINT, { signal });
+      setBatches(Array.isArray(res.data) ? res.data : []);
+    } catch (e: any) {
+      if (e.name === "AbortError") return;
+      console.error("Fetch batches error", e);
+      const status = e?.response?.status;
+      if (status === 401) {
+        Alert.alert("Unauthorized", "Session expired. Please login again.");
+        router.replace("/");
+        return;
+      }
+      if (status === 403) {
+        Alert.alert("Forbidden", "Access denied. Check permissions.");
+        return;
+      }
+      setError("Failed to load batches. Check server or network.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    if (status === 403) {
-      Alert.alert("Forbidden", "Access denied. Check permissions.");
-      return;
-    }
-    setError("Failed to load batches. Check server or network.");
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
   }
-}
 
   useEffect(() => {
     const ac = new AbortController();
@@ -87,6 +116,7 @@ export default function Orders(): JSX.Element {
     fetchBatches();
   }
 
+  // --- FILTER & SORT ---
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     let list = batches.filter((b) =>
@@ -117,182 +147,132 @@ export default function Orders(): JSX.Element {
     router.replace("/");
   };
 
-  const AnimatedHen = () => {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 1.15, duration: 450, useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 0.95, duration: 450, useNativeDriver: true }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [scale]);
-
   return (
-    <Animated.Text
-      accessibilityLabel="Loading hen"
-      style={{ transform: [{ scale }], fontSize: 56, marginBottom: 6 }}
-    >
-      🐔
-    </Animated.Text>
-  );
-};
-  const Cock = () => <Text style={{ marginRight: 8 }}>🐓</Text>;
-  return (
-    <View className="flex-1 bg-slate-50 mt-6">
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#ea580c" />
 
-      {/* --- BACKGROUND THEME LAYER --- */}
-      <View className="absolute top-0 left-0 right-0 h-[35%] bg-orange-600 rounded-b-[40px]" />
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>Orders</Text>
+            <Text style={styles.headerSub}>Browse and order available batches</Text>
+          </View>
 
-      <SafeAreaView className="flex-1">
-        {/* Header */}
-        <View className="px-4 pt-6 pb-6">
-          <View className="flex-row justify-between items-center">
-            <View>
-              {/* Changed text to white to match theme */}
-              <Text className="text-3xl font-bold text-white">Orders</Text>
-              <Text className="text-orange-100 text-sm mt-1">Browse and order available batches</Text>
-            </View>
+          <View style={styles.headerActions}>
+            <Link href="/History" asChild>
+              <TouchableOpacity style={styles.navButton}>
+                <Cock />
+                <Text style={styles.navButtonText}>My Orders</Text>
+              </TouchableOpacity>
+            </Link>
 
-            <View className="flex-row items-center space-x-3">
-  {isWide ? (
-    <Link href="/History" asChild>
-      <TouchableOpacity className="flex-row items-center bg-white/20 px-3 py-2 rounded-full border border-white/30" accessibilityRole="button" accessibilityLabel="My Orders">
-        <Cock />
-        <Text className="text-white font-semibold ml-1">My Orders</Text>
-      </TouchableOpacity>
-    </Link>
-  ) : (
-    <Link href="/History" asChild>
-      <TouchableOpacity className="p-2 bg-white/10 rounded-full" accessibilityRole="button" accessibilityLabel="My Orders">
-        
-        <Text className="text-white font-semibold ml-1">My Orders</Text>
-      </TouchableOpacity>
-    </Link>
-  )}
-
-  {/* logout */}
-  {isWide ? (
-    <TouchableOpacity onPress={handleLogout} className="flex-row items-center bg-white px-3 py-2 rounded-full" accessibilityRole="button" accessibilityLabel="Logout">
-      <Cock />
-      <Feather name="log-out" size={16} color="#ea580c" />
-      <Text className="ml-2 text-slate-800 font-semibold">Logout</Text>
-    </TouchableOpacity>
-  ) : (
-    <TouchableOpacity onPress={handleLogout} className="p-2 bg-white/10 rounded-full" accessibilityRole="button" accessibilityLabel="Logout">
-      <Feather name="log-out" size={18} color="#fff" />
-    </TouchableOpacity>
-  )}
-</View>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Feather name="log-out" size={18} color="#ea580c" />
+            </TouchableOpacity>
           </View>
         </View>
+      </View>
 
-        {/* Batches list */}
+      <SafeAreaView style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={{ padding: 16, gap: 16, paddingTop: 10 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#ea580c" />}
         >
-          {/* Search & Sort */}
-          <View className="flex-row items-center gap-3">
-            <View className="flex-1">
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search batch code, breed or id..."
-                className="bg-white border border-slate-200 px-4 py-3 rounded-xl elevation-sm shadow-sm"
-              />
-            </View>
+          
+          {/* SEARCH & SORT */}
+          <View style={styles.searchRow}>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search batch code, breed..."
+              style={styles.searchInput}
+              placeholderTextColor="#94a3b8"
+            />
 
-            <View className="w-40">
-              <TouchableOpacity
-                onPress={() =>
-                  setSortBy(sortBy === "recent" ? "sizeDesc" : sortBy === "sizeDesc" ? "availableDesc" : "recent")
-                }
-                className="bg-white px-3 py-3 rounded-xl border border-slate-200 items-center shadow-sm"
-              >
-                <Text className="text-slate-700 font-semibold">
-                  {sortBy === "recent" ? "Recent" : sortBy === "sizeDesc" ? "Size" : "Available"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() =>
+                setSortBy(sortBy === "recent" ? "sizeDesc" : sortBy === "sizeDesc" ? "availableDesc" : "recent")
+              }
+              style={styles.sortButton}
+            >
+              <Feather name="filter" size={16} color="#475569" style={{ marginRight: 6 }} />
+              <Text style={styles.sortButtonText}>
+                {sortBy === "recent" ? "Recent" : sortBy === "sizeDesc" ? "Size" : "Available"}
+              </Text>
+            </TouchableOpacity>
           </View>
 
+          {/* CONTENT */}
           {loading ? (
-            <View className="h-60 items-center justify-center">
+            <View style={styles.centerContainer}>
               <AnimatedHen />
-              {/*<ActivityIndicator size="large" color="#ea580c" style={{ marginTop: 6 }} />*/}
-              <Text className="text-slate-500 mt-3">Loading batches...</Text>
+              <Text style={styles.loadingText}>Loading batches...</Text>
             </View>
           ) : error ? (
-            <View className="bg-red-50 border border-red-100 p-4 rounded-xl">
-              <Text className="text-red-600 font-semibold">Error</Text>
-              <Text className="text-red-500 mt-1">{error}</Text>
-              <TouchableOpacity onPress={() => fetchBatches()} className="mt-3 bg-red-600 px-4 py-2 rounded">
-                <Text className="text-white">Retry</Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorTitle}>Error</Text>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity onPress={() => fetchBatches()} style={styles.retryBtn}>
+                <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
             </View>
           ) : filtered.length === 0 ? (
-            <View className="items-center py-16 bg-white rounded-2xl border border-slate-100 mx-1">
+            <View style={styles.emptyBox}>
               <AnimatedHen />
-              <Text className="text-slate-500">No batches matched your search.</Text>
+              <Text style={styles.emptyText}>No batches found.</Text>
             </View>
           ) : (
-            <View className={`${isWide ? "flex-row flex-wrap justify-start" : ""} gap-4`}>
+            <View style={isWide ? styles.gridList : styles.list}>
               {filtered.map((batch) => {
                 const remainingRatio = Math.max(0, Math.min(1, (batch.availableHens || 0) / (batch.totalHens || 1)));
+                
                 return (
-                  <View
-                    key={String(batch.id)}
-                    style={{ width: isWide ? "32%" : "100%" }}
-                    className="bg-white rounded-2xl p-4 mb-2 border border-slate-100 shadow-sm elevation-sm"
-                  >
-                    <View className="flex-row justify-between items-start">
+                  <View key={String(batch.id)} style={[styles.card, isWide && styles.cardWide]}>
+                    
+                    {/* Card Top */}
+                    <View style={styles.cardHeader}>
                       <View>
-                        <Text className="text-xs text-slate-400">
-                          Batch - <Text className="text-xs font-bold text-slate-500">{batch.id}</Text>
+                        <Text style={styles.batchLabel}>Batch - <Text style={styles.batchId}>{batch.id}</Text></Text>
+                        <Text style={styles.batchCode}>{batch.batchCode}</Text>
+                        <Text style={styles.breedText}>{batch.breed}</Text>
+                        <Text style={styles.dateText}>Created: {batch.dateCreated}</Text>
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={styles.availLabel}>Available</Text>
+                        <Text style={styles.availCount}>{batch.availableHens}</Text>
+                        <Text style={styles.totalText}>of {batch.totalHens}</Text>
+                      </View>
+                    </View>
+
+                    {/* Progress Bar */}
+                    <View style={styles.progressContainer}>
+                      <View style={styles.progressBarBg}>
+                        <View style={[styles.progressBarFill, { width: `${remainingRatio * 100}%` }]} />
+                      </View>
+                      <Text style={styles.progressText}>{Math.round(remainingRatio * 100)}% remaining</Text>
+                    </View>
+
+                    <View style={styles.divider} />
+
+                    {/* Footer Actions */}
+                    <View style={styles.cardFooter}>
+                      <View>
+                        <Text style={styles.footerLabel}>Total Size</Text>
+                        <Text style={styles.footerValue}>{batch.totalHens} Hens</Text>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => openOrderForm(batch)}
+                        disabled={batch.availableHens <= 0}
+                        style={[styles.orderBtn, batch.availableHens <= 0 && styles.soldOutBtn]}
+                      >
+                        <Cock />
+                        <Text style={[styles.orderBtnText, batch.availableHens <= 0 && styles.soldOutText]}>
+                          {batch.availableHens > 0 ? "Order Now" : "Sold Out"}
                         </Text>
-                        <Text className="text-lg font-bold text-slate-900">{batch.batchCode}</Text>
-                        <Text className="text-sm text-slate-500 mt-1">{batch.breed}</Text>
-                        <Text className="text-xs text-slate-400 mt-2">Created: {batch.dateCreated}</Text>
-                      </View>
-
-                      <View className="items-end">
-                        <Text className="text-xs text-slate-500">Available</Text>
-                        <Text className="text-xl font-bold text-orange-600">{batch.availableHens}</Text>
-                        <Text className="text-xs text-slate-400">of {batch.totalHens}</Text>
-                      </View>
-                    </View>
-
-                    {/* progress */}
-                    <View className="mt-4">
-                      <View className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <View style={{ width: `${remainingRatio * 100}%` }} className="h-2 bg-orange-500" />
-                      </View>
-                      <Text className="text-xs text-slate-400 mt-2">{Math.round(remainingRatio * 100)}% available</Text>
-                    </View>
-
-                    <View className="flex-row justify-between items-center mt-4">
-                      <View>
-                        <Text className="text-sm text-slate-600">Batch size</Text>
-                        <Text className="font-semibold text-slate-900">{batch.totalHens} hens</Text>
-                      </View>
-
-                      <View className="flex-row items-center">
-                        <TouchableOpacity
-                          onPress={() => openOrderForm(batch)}
-                          disabled={batch.availableHens <= 0}
-                          className={`flex-row items-center px-4 py-2 rounded-xl ${batch.availableHens > 0 ? "bg-orange-600" : "bg-slate-200"}`}
-                        >
-                          <Cock />
-                          <Text className={`${batch.availableHens > 0 ? "text-white" : "text-slate-400"} font-semibold`}>
-                            {batch.availableHens > 0 ? "Order" : "Sold Out"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -301,7 +281,7 @@ export default function Orders(): JSX.Element {
           )}
         </ScrollView>
 
-        {/* Order Form Modal / Drawer */}
+        {/* ORDER FORM MODAL */}
         {selectedBatch && (
           <OrderForm
             batch={selectedBatch}
@@ -341,7 +321,6 @@ function OrderForm({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Format JS Date => yyyy-mm-dd
   function formatDateForInput(d: Date) {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -349,36 +328,12 @@ function OrderForm({
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  // Native date change handler
   function onNativeDateChange(event: any, selected?: Date | undefined) {
     setShowNativeDatePicker(false);
-    // on Android the event may be { type: "dismissed" } when dismissed
     if (event?.type === "dismissed") return;
     if (selected) {
       setDeliveryDate(formatDateForInput(selected));
       setErrors((s) => ({ ...s, deliveryDate: "" }));
-    }
-  }
-
-  // Web date picker helper (creates an <input type="date"> and clicks it)
-  function openWebDatePicker() {
-    if (Platform.OS !== "web") return;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc: any = typeof document !== "undefined" ? document : null;
-      if (!doc) return;
-      const input = doc.createElement("input");
-      input.type = "date";
-      input.style.position = "absolute";
-      input.style.left = "-9999px";
-      doc.body.appendChild(input);
-      input.onchange = () => {
-        if (input.value) setDeliveryDate(input.value);
-        doc.body.removeChild(input);
-      };
-      input.click();
-    } catch (e) {
-      console.error("web date picker error", e);
     }
   }
 
@@ -402,7 +357,6 @@ function OrderForm({
       return;
     }
 
-    // Build payload (match provided format)
     const payload = {
       batchId: batch.id,
       batchCode: batch.batchCode,
@@ -417,191 +371,257 @@ function OrderForm({
 
     setLoading(true);
     try {
-  const res = await rootApi.post("http://192.168.0.110:8081/api/orders/vendor/place-order", payload);
-  if (res.status === 200 || res.status === 201) {
-    Alert.alert("Success", "Your order has been placed.");
-    onPlaced();
-  } else {
-    console.error("Place order failed", res.data);
-    Alert.alert("Failed", "Your order is not placed.");
+      const res = await rootApi.post(PLACE_ORDER_ENDPOINT, payload);
+      if (res.status === 200 || res.status === 201) {
+        Alert.alert("Success", "Your order has been placed.");
+        onPlaced();
+      } else {
+        console.error("Place order failed", res.data);
+        Alert.alert("Failed", "Your order is not placed.");
+      }
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 401) {
+        Alert.alert("Unauthorized", "Session expired. Please login again.");
+      } else if (status === 403) {
+        Alert.alert("Forbidden", "Access denied. Check permissions.");
+      } else {
+        Alert.alert("Failed", "Your order is not placed.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
-} catch (e: any) {
-  const status = e?.response?.status;
-  const data = e?.response?.data;
-  console.error("Place order error", status ?? e, data ?? "");
-  if (status === 401) {
-    Alert.alert("Unauthorized", "Session expired. Please login again.");
-  } else if (status === 403) {
-    Alert.alert("Forbidden", "Access denied. Check permissions.");
-  } else {
-    Alert.alert("Failed", "Your order is not placed.");
-  }
-} finally {
-  setLoading(false);
-}
-  }
-const Cock = () => <Text style={{ marginRight: 8 }}>🐓</Text>;
-  return (
-    <View className="absolute inset-0 z-50 items-end justify-end">
-      {/* Backdrop */}
-      <TouchableOpacity onPress={onClose} className="absolute inset-0 bg-black/60" />
 
-      {/* Sheet */}
-      <View style={{ width: "100%", maxHeight: "92%" }} className="bg-white rounded-t-3xl px-6 py-5 shadow-xl">
-        <View className="flex-row justify-between items-center mb-3">
+  const Cock = () => <Text style={{ marginRight: 8 }}>🐓</Text>;
+
+  return (
+    <View style={styles.modalOverlay}>
+      <TouchableOpacity style={styles.backdrop} onPress={onClose} />
+      
+      <View style={styles.modalContent}>
+        <View style={styles.modalHeader}>
           <View>
-            <Text className="text-lg font-bold text-slate-900">Create Order</Text>
-            <Text className="text-sm text-slate-500">Batch {batch.batchCode} • ID {batch.id}</Text>
+            <Text style={styles.modalTitle}>Create Order</Text>
+            <Text style={styles.modalSub}>Batch {batch.batchCode} • ID {batch.id}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} className="bg-slate-100 p-2 rounded-full">
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
             <Feather name="x" size={18} color="#334155" />
           </TouchableOpacity>
         </View>
 
-        {/* Two-column grid: Quantity | Weight */}
-        <View className="flex-row gap-3 mb-4">
-          <View className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-3">
-            <Text className="text-xs text-slate-500 mb-2">Order by Quantity</Text>
-            <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-sm font-semibold text-slate-700">Quantity</Text>
-             <TouchableOpacity onPress={() => setOrderBy("quantity")} className={`px-2 py-1 rounded-full ${orderBy === "quantity" ? "bg-orange-600" : "bg-slate-100"}`}>
-                
-                <Text className={`${orderBy === "quantity" ? "text-white" : "text-slate-700"} text-xs`}>Use qty</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              value={quantity}
-              onChangeText={(t) => setQuantity(t.replace(/[^0-9]/g, ""))}
-              keyboardType="numeric"
-              className={`p-3 rounded-xl bg-white ${errors.quantity ? "border border-red-400" : "border border-slate-200"}`}
-            />
-            {errors.quantity ? <Text className="text-red-500 text-xs mt-1">{errors.quantity}</Text> : null}
-          </View>
-
-          <View className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-3">
-            <Text className="text-xs text-slate-500 mb-2">Order by Weight</Text>
-            <View className="flex-row items-center justify-between mb-2">
-              <Text className="text-sm font-semibold text-slate-700">Weight (kg)</Text>
-              <TouchableOpacity onPress={() => setOrderBy("weight")} className={`px-2 py-1 rounded-full ${orderBy === "weight" ? "bg-orange-600" : "bg-slate-100"}`}>
-                <Text className={`${orderBy === "weight" ? "text-white" : "text-slate-700"} text-xs`}>Use wt</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              value={weight}
-              onChangeText={(t) => setWeight(t.replace(/[^0-9.]/g, ""))}
-              keyboardType="decimal-pad"
-              className={`p-3 rounded-xl bg-white ${errors.weight ? "border border-red-400" : "border border-slate-200"}`}
-            />
-            {errors.weight ? <Text className="text-red-500 text-xs mt-1">{errors.weight}</Text> : null}
-          </View>
-        </View>
-
-        {/* Vendor + contact grid */}
-        <View className="mb-4">
-          <Text className="text-xs text-slate-800 mb-2">Vendor Information</Text>
-
-          <Text className="text-xs text-slate-800 mb-1">Vendor name</Text>
-          <TextInput
-            value={vendorName}
-            onChangeText={(t) => setVendorName(t)}
-            placeholder="Vendor name"
-            className={`p-3 rounded-xl bg-slate-50 mb-2 ${errors.vendorName ? "border border-red-400" : "border border-slate-200"}`}
-          />
-          {errors.vendorName ? <Text className="text-red-500 text-xs mb-2">{errors.vendorName}</Text> : null}
-
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-xs text-slate-800 mb-1">Phone number</Text>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          
+          {/* Order Type Toggle */}
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleBox}>
+              <View style={styles.toggleHeader}>
+                 <Text style={styles.toggleLabel}>Quantity (Birds)</Text>
+                 <TouchableOpacity onPress={() => setOrderBy("quantity")} style={[styles.radioBtn, orderBy === "quantity" && styles.radioBtnActive]}>
+                    <View style={orderBy === "quantity" ? styles.radioInner : null} />
+                 </TouchableOpacity>
+              </View>
               <TextInput
-                value={phoneNumber}
-                onChangeText={(t) => setPhoneNumber(t.replace(/[^0-9+]/g, ""))}
-                placeholder="Phone number"
-                keyboardType="phone-pad"
-                className={`p-3 rounded-xl bg-slate-50 mb-2 ${errors.phoneNumber ? "border border-red-400" : "border border-slate-200"}`}
+                value={quantity}
+                onChangeText={(t) => setQuantity(t.replace(/[^0-9]/g, ""))}
+                keyboardType="numeric"
+                style={[styles.input, errors.quantity && styles.inputError]}
+                editable={orderBy === "quantity"}
               />
-              {errors.phoneNumber ? <Text className="text-red-500 text-xs mb-2">{errors.phoneNumber}</Text> : null}
             </View>
 
-            <View className="flex-1">
-              <Text className="text-xs text-slate-800 mb-1">Shop name</Text>
+            <View style={styles.toggleBox}>
+              <View style={styles.toggleHeader}>
+                 <Text style={styles.toggleLabel}>Weight (Kg)</Text>
+                 <TouchableOpacity onPress={() => setOrderBy("weight")} style={[styles.radioBtn, orderBy === "weight" && styles.radioBtnActive]}>
+                    <View style={orderBy === "weight" ? styles.radioInner : null} />
+                 </TouchableOpacity>
+              </View>
               <TextInput
-                value={shopName}
-                onChangeText={setShopName}
-                placeholder="Shop name"
-                className={`p-3 rounded-xl bg-slate-50 mb-2 ${errors.shopName ? "border border-red-400" : "border border-slate-200"}`}
+                value={weight}
+                onChangeText={(t) => setWeight(t.replace(/[^0-9.]/g, ""))}
+                keyboardType="decimal-pad"
+                style={[styles.input, errors.weight && styles.inputError]}
+                editable={orderBy === "weight"}
               />
-              {errors.shopName ? <Text className="text-red-500 text-xs mb-2">{errors.shopName}</Text> : null}
             </View>
           </View>
 
-          <Text className="text-xs text-slate-800 mb-1">Delivery address</Text>
-          <TextInput
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Delivery address"
-            multiline
-            numberOfLines={2}
-            className={`p-3 rounded-xl bg-slate-50 mb-2 ${errors.address ? "border border-red-400" : "border border-slate-200"}`}
-          />
-          {errors.address ? <Text className="text-red-500 text-xs mb-2">{errors.address}</Text> : null}
+          {/* Form Fields */}
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Vendor Name</Text>
+            <TextInput style={[styles.input, errors.vendorName && styles.inputError]} value={vendorName} onChangeText={setVendorName} placeholder="Enter name" />
+            
+            <View style={styles.row}>
+                <View style={{flex: 1, marginRight: 8}}>
+                    <Text style={styles.inputLabel}>Phone</Text>
+                    <TextInput style={[styles.input, errors.phoneNumber && styles.inputError]} value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" placeholder="98..." />
+                </View>
+                <View style={{flex: 1}}>
+                    <Text style={styles.inputLabel}>Shop Name</Text>
+                    <TextInput style={[styles.input, errors.shopName && styles.inputError]} value={shopName} onChangeText={setShopName} placeholder="Shop Name" />
+                </View>
+            </View>
 
-          {/* Date Picker label + control */}
-         <Text className="text-xs text-slate-800 mb-1">Delivery date</Text>
+            <Text style={styles.inputLabel}>Address</Text>
+            <TextInput style={[styles.input, styles.textArea, errors.address && styles.inputError]} value={address} onChangeText={setAddress} multiline placeholder="Full Address" />
 
-{Platform.OS === "web" ? (
-  // Web: render a native date input so browser shows its date picker
-  // Note: styling is simple — you can tweak to match design
-  <input
-    type="date"
-    value={deliveryDate}
-    onChange={(e: any) => {
-      setDeliveryDate(e.target.value);
-      setErrors((s) => ({ ...s, deliveryDate: "" }));
-    }}
-    style={{
-      padding: 12,
-      borderRadius: 12,
-      border: errors.deliveryDate ? "1px solid #f87171" : "1px solid #e2e8f0",
-      width: "100%",
-      background: "#fff",
-      color: deliveryDate ? "#0f172a" : "#94a3b8",
-    }}
-  />
-) : (
-  <View>
-    <TouchableOpacity
-      onPress={() => setShowNativeDatePicker(true)}
-      className={`p-3 rounded-xl bg-white border ${errors.deliveryDate ? "border-red-400" : "border-slate-200"}`}
-    >
-      <Text className={`${deliveryDate ? "text-slate-800" : "text-slate-400"}`}>{deliveryDate || "Select date"}</Text>
-    </TouchableOpacity>
+            <Text style={styles.inputLabel}>Delivery Date</Text>
+            {Platform.OS === "web" ? (
+                <input
+                  type="date"
+                  value={deliveryDate}
+                  onChange={(e: any) => {
+                    setDeliveryDate(e.target.value);
+                    setErrors((s) => ({ ...s, deliveryDate: "" }));
+                  }}
+                  style={{
+                    padding: 12, borderRadius: 10, width: "100%",
+                    border: errors.deliveryDate ? "1px solid #f87171" : "1px solid #e2e8f0",
+                    background: "#f8fafc", color: "#0f172a"
+                  }}
+                />
+            ) : (
+                <TouchableOpacity
+                  onPress={() => setShowNativeDatePicker(true)}
+                  style={[styles.input, errors.deliveryDate && styles.inputError]}
+                >
+                  <Text style={deliveryDate ? {color: '#0f172a'} : {color: '#94a3b8'}}>
+                      {deliveryDate || "Select Date"}
+                  </Text>
+                </TouchableOpacity>
+            )}
+            {showNativeDatePicker && (
+                <DateTimePicker value={deliveryDate ? new Date(deliveryDate) : new Date()} mode="date" display="default" onChange={onNativeDateChange} />
+            )}
+          </View>
 
-    {showNativeDatePicker && (
-      <DateTimePicker
-        value={deliveryDate ? new Date(deliveryDate) : new Date()}
-        mode="date"
-        display={Platform.OS === "android" ? "default" : "spinner"}
-        onChange={onNativeDateChange}
-      />
-    )}
-  </View>
-)}
-{errors.deliveryDate ? <Text className="text-red-500 text-xs mt-2">{errors.deliveryDate}</Text> : null}
-        </View>
+          {/* Footer Actions */}
+          <View style={styles.modalFooter}>
+             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+                 <Text style={styles.cancelText}>Cancel</Text>
+             </TouchableOpacity>
+             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading}>
+                 {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Confirm Order</Text>}
+             </TouchableOpacity>
+          </View>
+          <View style={{height: 20}} />
 
-        {/* Actions */}
-        <View className="flex-row justify-end gap-3">
-          <TouchableOpacity onPress={onClose} className="flex-row items-center px-4 py-3 bg-slate-100 rounded-xl">
-            <Cock />
-            <Text className="text-slate-700 font-semibold">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSubmit} className="flex-row items-center px-4 py-3 bg-orange-600 rounded-xl">
-            {loading ? <ActivityIndicator color="#fff" style={{ marginRight: 8 }} /> : null}
-            <Cock />
-            <Text className="text-white font-semibold">Place Order</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </View>
     </View>
   );
 }
+
+// --- STYLES ---
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
+  
+  // Header
+  header: { 
+    backgroundColor: '#ea580c', 
+    paddingTop: 50, 
+    paddingBottom: 25, 
+    paddingHorizontal: 20, 
+    borderBottomLeftRadius: 30, 
+    borderBottomRightRadius: 30, 
+    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 
+  },
+  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
+  headerSub: { color: '#ffedd5', fontSize: 13, marginTop: 2 },
+  
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  navButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  navButtonText: { color: '#fff', fontWeight: '600' },
+  logoutButton: { backgroundColor: '#fff', padding: 8, borderRadius: 20 },
+
+  scrollContent: { padding: 16, paddingBottom: 40 },
+
+  // Search & Filter
+  searchRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  searchInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 12, fontSize: 15, color: '#0f172a', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  sortButton: { backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', justifyContent: 'center' },
+  sortButtonText: { color: '#475569', fontWeight: '600' },
+
+  // States
+  centerContainer: { alignItems: 'center', justifyContent: 'center', height: 200 },
+  loadingText: { color: '#94a3b8', marginTop: 10 },
+  
+  errorBox: { backgroundColor: '#FEF2F2', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#FEE2E2' },
+  errorTitle: { color: '#DC2626', fontWeight: 'bold', marginBottom: 4 },
+  errorText: { color: '#DC2626', marginBottom: 10 },
+  retryBtn: { backgroundColor: '#DC2626', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, alignSelf: 'flex-start' },
+  retryText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+
+  emptyBox: { alignItems: 'center', padding: 40, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  emptyText: { color: '#94a3b8', marginTop: 10 },
+
+  // List Grid
+  list: { flexDirection: 'column', gap: 16 },
+  gridList: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  
+  // Batch Card
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  cardWide: { width: '32%' }, // for wide screens
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  
+  batchLabel: { fontSize: 12, color: '#94a3b8' },
+  batchId: { fontWeight: 'bold', color: '#64748b' },
+  batchCode: { fontSize: 18, fontWeight: 'bold', color: '#0f172a', marginTop: 2 },
+  breedText: { fontSize: 14, color: '#64748b' },
+  dateText: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
+
+  availLabel: { fontSize: 11, color: '#64748b', marginBottom: 2 },
+  availCount: { fontSize: 20, fontWeight: 'bold', color: '#ea580c' },
+  totalText: { fontSize: 11, color: '#94a3b8' },
+
+  progressContainer: { marginBottom: 12 },
+  progressBarBg: { height: 8, backgroundColor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#f97316', borderRadius: 4 },
+  progressText: { fontSize: 11, color: '#94a3b8', marginTop: 4, textAlign: 'right' },
+
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 12 },
+
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  footerLabel: { fontSize: 11, color: '#64748b' },
+  footerValue: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+
+  orderBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ea580c', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12 },
+  soldOutBtn: { backgroundColor: '#e2e8f0' },
+  orderBtnText: { color: '#fff', fontWeight: 'bold' },
+  soldOutText: { color: '#94a3b8' },
+
+  // --- MODAL STYLES ---
+  modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 50, justifyContent: 'flex-end' },
+  backdrop: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%', width: '100%' },
+  
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#0f172a' },
+  modalSub: { fontSize: 13, color: '#64748b' },
+  closeBtn: { backgroundColor: '#f1f5f9', padding: 8, borderRadius: 20 },
+
+  toggleRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  toggleBox: { flex: 1, backgroundColor: '#f8fafc', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  toggleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  toggleLabel: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  
+  radioBtn: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
+  radioBtnActive: { borderColor: '#ea580c' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ea580c' },
+
+  formGroup: { marginBottom: 20 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 12 },
+  input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 12, fontSize: 15, color: '#0f172a' },
+  inputError: { borderColor: '#f87171' },
+  textArea: { height: 70, textAlignVertical: 'top' },
+  
+  row: { flexDirection: 'row' },
+
+  modalFooter: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end', marginTop: 10 },
+  cancelBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12, backgroundColor: '#f1f5f9' },
+  cancelText: { color: '#475569', fontWeight: '600' },
+  submitBtn: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: '#ea580c' },
+  submitText: { color: '#fff', fontWeight: 'bold' }
+});
