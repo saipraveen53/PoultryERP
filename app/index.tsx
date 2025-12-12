@@ -57,7 +57,7 @@ export default function Login() {
       };
 
       // 2. API Call: rootApi.post(api/auth/login)
-      const response = await axios.post('http://192.168.0.110:8080/api/auth/login', loginPayload);
+      const response = await axios.post('http://192.168.0.110:8083/api/auth/login', loginPayload);
       
 
      if(response.status==200){
